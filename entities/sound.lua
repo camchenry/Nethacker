@@ -33,7 +33,7 @@ function Sound:initialize(directory)
     signal.register('uiClick', function() self:onUiClick() end)
     signal.register('uiHover', function() self:onUiHover() end)
     signal.register('soundVolumeChanged', function(v) self:onSoundVolumeChanged(v) end)
-    signal.register('menuEntered', function() self:onMenuEnter() end)
+    signal.register('typing', function() self:onTyping() end)
 end
 
 function Sound:update(dt)
@@ -61,8 +61,9 @@ function Sound:onUiHover(enemy)
 	self.sounds.uiHover:play()
 end
 
-function Sound:onMenuEnter()
-
+function Sound:onTyping()
+	local file = "typing"..math.random(7)
+	self.sounds[file]:play()
 end
 
 function Sound:draw()

@@ -130,9 +130,10 @@ function game:enter()
     	i = i + 1
     end
     
-    self.startName = "Toaster"
+    self.startName = "Root Server"
     self.startNode = self:add(Node:new(love.graphics.getWidth()/2, love.graphics.getHeight()/2, self.startName))
     self.currentNode = self.startNode
+    self.prevNode = self.currentNode
     local hash = hashids.new(self.startName):encode(1235)
 	self.serverHashes[hash] = self.startName
 	self.serverHashes[self.startName] = hash
@@ -158,6 +159,8 @@ function game:enter()
 		["ls"] = "lists files in the current server",
 		["print"] = "outputs the contents of a file",
 		["access"] = "grants access to a server using a password",
+		["back"] = "returns to the previous visited server",
+		["download"] = "saves a file to the root server for later access",
 	}
 	self.usage = {
 		["help"] = "help <command>",
@@ -166,6 +169,8 @@ function game:enter()
 		["ls"] = "ls",
 		["print"] = "print <filename>",
 		["access"] = "access <server id> <password>",
+		["back"] = "back",
+		["download"] = "download <filename>"
 	}
 	self.commands = {
 		["help"] = function(args)
@@ -208,6 +213,7 @@ function game:enter()
 					if node.secured then
 						self:print("access denied. password required")
 					else
+						self.prevNode = self.currentNode
 						self.currentNode = node
 						self:print("switched to server '"..args[1].."' (" .. self.serverHashes[args[1]]..")")
 					end
@@ -289,6 +295,34 @@ function game:enter()
 				self:print("error: no server unique id given")
 			end
 		end,
+
+		["back"] = function(args)
+			self.currentNode = self.prevNode
+			self:print("returned to previous node '"..self.serverHashes[self.currentNode.name].."' ("..self.currentNode.name..")")
+		end,
+
+		["download"] = function(args)
+			if args[1] ~= nil and args[1] ~= "" then
+				local found = false
+				local file = nil
+
+				for i, f in pairs(self.currentNode.files) do
+					if f.name == args[1] then
+						found = true
+					end
+					file = f
+				end
+
+				if found then
+					table.insert(self.startNode.files, file)
+					self:print("file '"..file.name.."' downloaded to root server")
+				else
+					self:print("no file named '"..args[1].."'")
+				end
+			else
+				self:print("error: no file given")
+			end
+		end,
 	}
 end
 
@@ -361,7 +395,12 @@ function game:update(dt)
 end
 
 function game:textinput(text)
+	signal.emit('typing')
 	self.console.input = self.console.input .. text
+end
+
+function game:wheelmoved(x, y)
+
 end
 
 function game:keypressed(key, code)
@@ -369,8 +408,9 @@ function game:keypressed(key, code)
     	obj:keypressed(key, code)
     end
 
-	love.keyboard.setKeyRepeat(false)
-
+    if not love.keyboard.hasKeyRepeat() then
+    	signal.emit('typing')
+    end
 
     if key == "backspace" then
     	love.keyboard.setKeyRepeat(true)
@@ -387,6 +427,12 @@ function game:keypressed(key, code)
     if key == "up" then
     	self.console.input = self.console.lastInput
     end
+end
+
+function game:keyreleased(key, code)
+	if key == "backspace" then
+		love.keyboard.setKeyRepeat(false)
+	end
 end
 
 function game:mousepressed(x, y, mbutton)
