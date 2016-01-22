@@ -22,10 +22,10 @@ end
 
 Node = class('Node')
 
-function Node:initialize(x, y, name)
-	self.x = x
-	self.y = y
+function Node:initialize(name, id)
 	self.name = name or "Node"
+	self.id = id or hashids.new(self.name):encode(1235)
+	self.motd = nil
 	self.radius = 25
 	self.connections = {}
 	self.files = {}
@@ -48,6 +48,17 @@ function Node:connect(other, stop)
 	if not stop then
 		other:connect(self, true)
 	end
+
+	return self
+end
+
+function Node:addFile(file)
+	table.insert(self.files, file)
+end
+
+function Node:addPassword(password)
+	self.password = password
+	self.secured = true
 end
 
 function Node:update(dt)
@@ -62,55 +73,27 @@ function Node:keypressed(key, code)
 
 end
 
-function Node:draw()
-	love.graphics.circle("line", self.x, self.y, self.radius)
-
-	for i, node in pairs(self.connections) do
-		love.graphics.setLineWidth(1)
-		love.graphics.line(self.x, self.y, node.x, node.y)
-	end
-
-	if self.selected then
-		love.graphics.rectangle("line", self.x - self.radius, self.y - self.radius, self.radius*2, self.radius*2)
-	end
-
-	if self.name then
-		love.graphics.print(self.name, self.x, self.y)
-	end
-end
-
-function game:generateSubnodes(start, n)
-	local angle = 2 * math.pi / n
-
+function game:generateBusinessServers(start, n)
 	local subnodes = {}
+
 	for i=1, n do 
-		local node = Node:new(start.x + math.cos(angle*i)*200, start.y + math.sin(angle*i)*100, self:getBusinessName())
+		local node = Node:new(self:getBusinessName())
 		node:connect(start)
 		self:add(node)
 		table.insert(subnodes, node)
 	end
 
-	local securedNode = math.random(n)
-	local nodeWithPassword = math.random(n)
-
-	while nodeWithPassword == securedNode do
-		nodeWithPassword = math.random(n)
-	end
-
-	local securedServerPassword = string.random(6)
-	math.randomseed(23534534577)
-	local adminPassword = string.random(8)
-
-	-- file for secured server
-	table.insert(subnodes[securedNode].files, File:new("admin.txt", "the current password for root access is: "..adminPassword))
-	subnodes[securedNode].secured = true
-	subnodes[securedNode].password = securedServerPassword
-
-	-- file for server with the password
-	local name = hashids.new(subnodes[nodeWithPassword].name):encode(1234567) .. ".dat"
-	table.insert(subnodes[nodeWithPassword].files, File:new(name, nil, securedServerPassword))
-
 	return subnodes
+end
+
+function game:generateServices(parent)
+	local email = Node:new(parent.name .. " Email Server", parent.id .. "-mail")
+	local ftp = Node:new(parent.name .. " FTP Server", parent.id .. "-ftp")
+	local database = Node:new(parent.name .. " Database Server", parent.id .. "-db")
+
+	email:connect(parent)
+	ftp:connect(parent)
+	database:connect(parent)
 end
 
 function game:enter()
@@ -118,30 +101,40 @@ function game:enter()
     function game:add(obj) table.insert(self.objects, obj) return obj end
 
     self.businessNames = {}
-    self.serverHashes = {}
     self.nameUsed = {}
     local i = 1
     for line in love.filesystem.lines("data/businesses.txt") do
     	self.businessNames[i] = line
-
-    	local hash = hashids.new(line):encode(1235)
-    	self.serverHashes[hash] = line
-    	self.serverHashes[line] = hash
     	i = i + 1
     end
     
-    self.startName = "Root Server"
-    self.startNode = self:add(Node:new(love.graphics.getWidth()/2, love.graphics.getHeight()/2, self.startName))
-    self.currentNode = self.startNode
-    self.prevNode = self.currentNode
-    local hash = hashids.new(self.startName):encode(1235)
-	self.serverHashes[hash] = self.startName
-	self.serverHashes[self.startName] = hash
-
-    self:generateSubnodes(self.startNode, math.random(5)+3)
-
     self.startTime = 1506000490
     self.time = self.startTime
+
+    self.startName = "Root Server"
+    self.startNode = self:add(Node:new(self.startName))
+    self.currentNode = self.startNode
+    self.prevNode = self.currentNode
+
+    self.credits = 0
+    self.extranet = self:add(Node:new("Extranet"))
+    self.extranet:connect(self.startNode)
+    self.extranet.motd = "Welcome to the Extranet, for all your extra-legal needs."
+
+    self.extranetJobs = self:add(Node:new("Extranet Jobs", self.extranet.id .. "-job"))
+    self.extranetJobs:connect(self.extranet)
+    self.extranetJobs.update = function(dt)
+    	self.extranetJobs.motd = "You currently have "..self.credits.." Extranet credits." 
+    end
+
+    self.extranetMail = self:add(Node:new("Extranet Mail", self.extranet.id .. "-mail"))
+    self.extranetMail:connect(self.extranet)
+
+    self.extranetMarket = self:add(Node:new("Extranet Market", self.extranet.id .. "-market"))
+    self.extranetMarket:connect(self.extranet)
+    self.extranetMarket.update = function(dt)
+    	self.extranetMarket.motd = "You currently have "..self.credits.." Extranet credits." 
+    end
 
     self.console = {
     	buffer = {},
@@ -150,11 +143,9 @@ function game:enter()
 	}
 	self:print("welcome to VIGIL OS 0.3.4")
 	self:print("type 'help' for a list of commands")
-	self:print("priority goal: locate and access the secured server in this network")
 
 	self.help = {
 		["help"] = "gives help info for all commands",
-		["servers"] = "lists all servers connected to the current node",
 		["switch"] = "changes the current node to targeted server",
 		["ls"] = "lists files in the current server",
 		["print"] = "outputs the contents of a file",
@@ -164,7 +155,6 @@ function game:enter()
 	}
 	self.usage = {
 		["help"] = "help <command>",
-		["servers"] = "servers",
 		["switch"] = "switch <server id>",
 		["ls"] = "ls",
 		["print"] = "print <filename>",
@@ -189,21 +179,13 @@ function game:enter()
 			end
 		end,
 
-		["servers"] = function(args)
-			self:print("UNIQUE ID | SERVER NAME")
-			self:print("-------------------------")
-			for i, conn in pairs(self.currentNode.connections) do
-		    	self:print(self.serverHashes[conn.name] .. " | " .. self.serverHashes[self.serverHashes[conn.name]])
-		    end
-		end,
-
 		["switch"] = function(args)
 			if args[1] ~= nil then
 				local found = false
 				local node
 
 				for i, _node in pairs(self.currentNode.connections) do
-					if self.serverHashes[_node.name] == args[1] then
+					if _node.id == args[1] then
 						found = true
 						node = _node
 					end
@@ -215,7 +197,12 @@ function game:enter()
 					else
 						self.prevNode = self.currentNode
 						self.currentNode = node
-						self:print("switched to server '"..args[1].."' (" .. self.serverHashes[args[1]]..")")
+						self:print("switched to server '"..self.currentNode.id.."' (" .. self.currentNode.name ..")")
+					
+						if self.currentNode.motd then
+							self:print("\nServer message of the day:")
+							self:print(self.currentNode.motd)
+						end
 					end
 				else
 					self:print("no server '"..args[1].."' found")
@@ -264,7 +251,7 @@ function game:enter()
 				local node
 
 				for i, _node in pairs(self.currentNode.connections) do
-					if self.serverHashes[_node.name] == args[1] then
+					if _node.id == args[1] then
 						found = true
 						node = _node
 					end
@@ -274,8 +261,6 @@ function game:enter()
 					if not node.secured then
 						self:print("error: server is not password secured")
 						return
-					else
-						--self:print("server pass:"..node.password)
 					end
 
 					if args[2] ~= nil and args[2] ~= "" then
@@ -298,7 +283,7 @@ function game:enter()
 
 		["back"] = function(args)
 			self.currentNode = self.prevNode
-			self:print("returned to previous node '"..self.serverHashes[self.currentNode.name].."' ("..self.currentNode.name..")")
+			self:print("returned to previous node '"..self.currentNode.id.."' ("..self.currentNode.name..")")
 		end,
 
 		["download"] = function(args)
@@ -391,11 +376,32 @@ function game:update(dt)
     	obj:update(dt)
     end
 
+    if math.floor(self.time) % (20) == 0 and not self.jobAdded then
+    	self.jobAdded = true
+    	self.extranetJobs:addFile(File:new('job001.txt', 
+[[
+Hello, if can see this file, it is because we trust you with this 
+sensitive job. One of our technicians has leaked confidential 
+information, and due to legal obligations, we cannot fire him. 
+However, if his employee records were to be suddenly and 
+irreparably corrupted, we would be left with no choice but to 
+terminate his employment.
+
+The server address is: 000
+
+We will know when the job has been completed, and a payment of 
+20 credits will be added to your Extranet account.
+]]))
+    end
+
     self.time = self.time + dt
 end
 
 function game:textinput(text)
-	signal.emit('typing')
+	if love.keyboard.hasKeyRepeat() then
+    	signal.emit('typing')
+    end
+
 	self.console.input = self.console.input .. text
 end
 
@@ -446,6 +452,10 @@ function game:draw()
     	--obj:draw()
     end
 
+    love.graphics.setColor(22, 22, 22)
+    love.graphics.rectangle("fill", love.graphics.getWidth()-450, 0, 450, love.graphics.getHeight())
+    love.graphics.setColor(255, 255, 255)
+
     love.graphics.setColor(33, 33, 33)
     love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), 40)
     love.graphics.setColor(255, 255, 255)
@@ -457,17 +467,28 @@ function game:draw()
     love.graphics.print("AD"..love.timer.getAverageDelta(), 80, 10)
 
     love.graphics.setFont(fontBold[16])
-    love.graphics.print(self.currentNode.name .. " (" .. self.serverHashes[self.currentNode.name] .. ")", 25, love.graphics.getHeight()-60)
+    love.graphics.print(self.currentNode.name .. " (" .. self.currentNode.id .. ")", 15, love.graphics.getHeight()-60)
     love.graphics.setFont(font[16])
-    love.graphics.print("> "..self.console.input, 25, love.graphics.getHeight()-40)
+    love.graphics.print("> "..self.console.input, 15, love.graphics.getHeight()-40)
 
     local widthLimit = 700
+    local heightLimit = (love.graphics.getHeight() - 120)/love.graphics.getFont():getHeight("ABCDEFGHJIJKLMNOPQRSTUVWXYZ")
 
     i = 1
     for j, line in pairs(self.console.buffer) do
     	local maxWidth, wrappedText = love.graphics.getFont():getWrap(line, widthLimit)
     	i = i + #wrappedText
-    	love.graphics.printf(line, 25, love.graphics.getHeight() - 70 - love.graphics.getFont():getHeight(line)*i, widthLimit)
-    	if i >= 30 then return end
+    	love.graphics.printf(line, 15, love.graphics.getHeight() - 70 - love.graphics.getFont():getHeight(line)*i, widthLimit)
+    	if i >= heightLimit then break end
+    end
+
+    love.graphics.setFont(fontBold[16])
+    love.graphics.print("connected servers", 840, 50)
+    love.graphics.setFont(font[15])
+
+    for i, conn in ipairs(self.currentNode.connections) do
+    	local text = conn.id .. " | " .. conn.name
+    	local maxWidth, wrappedText = love.graphics.getFont():getWrap(text, widthLimit)
+    	love.graphics.printf(text, love.graphics.getWidth()-440, 80 + love.graphics.getFont():getHeight(line)*(i-1), widthLimit)
     end
 end

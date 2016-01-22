@@ -62,7 +62,7 @@ function Sound:onUiHover(enemy)
 end
 
 function Sound:onTyping()
-	local file = "typing"..math.random(7)
+	local file = "typing"..math.random(6)
 	self.sounds[file]:play()
 end
 
