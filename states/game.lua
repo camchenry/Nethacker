@@ -24,7 +24,7 @@ Node = class('Node')
 
 function Node:initialize(name, id)
 	self.name = name or "Node"
-	self.id = id or hashids.new(self.name):encode(1235)
+	self.id = id or hashids.new(self.name, 4, "1234567890abcdef"):encode(1235)
 	self.motd = nil
 	self.radius = 25
 	self.connections = {}
@@ -65,12 +65,31 @@ function Node:update(dt)
 
 end
 
+function Node:keypressed(key, code)
+
+end
+
 function Node:mousepressed(x, y, mbutton)
 
 end
 
-function Node:keypressed(key, code)
+Job = class("Job")
 
+function Job:initialize(name, description)
+	self.name = name
+	self.description = description
+	self.completed = false
+	self.alreadyCompleted = false
+	self.trigger = function(self) end
+end
+
+function Job:update(dt)
+	self.completed = self.trigger()
+
+	if self.completed and not self.alreadyCompleted then
+		self.alreadyCompleted = true
+		self.onCompleted()
+	end
 end
 
 function game:generateBusinessServers(start, n)
@@ -87,9 +106,9 @@ function game:generateBusinessServers(start, n)
 end
 
 function game:generateServices(parent)
-	local email = Node:new(parent.name .. " Email Server", parent.id .. "-mail")
-	local ftp = Node:new(parent.name .. " FTP Server", parent.id .. "-ftp")
-	local database = Node:new(parent.name .. " Database Server", parent.id .. "-db")
+	local email = Node:new(parent.name .. " Email Server", parent.id .. ":f2")
+	local ftp = Node:new(parent.name .. " FTP Server", parent.id .. ":22")
+	local database = Node:new(parent.name .. " Database Server", parent.id .. ":0f")
 
 	email:connect(parent)
 	ftp:connect(parent)
@@ -99,6 +118,13 @@ end
 function game:enter()
     self.objects = {}
     function game:add(obj) table.insert(self.objects, obj) return obj end
+
+    self.personNames = {}
+    local i = 1
+    for line in love.filesystem.lines("data/names.txt") do
+    	self.personNames[i] = line
+    	i = i + 1
+    end
 
     self.businessNames = {}
     self.nameUsed = {}
@@ -116,25 +142,73 @@ function game:enter()
     self.currentNode = self.startNode
     self.prevNode = self.currentNode
 
-    self.credits = 0
-    self.extranet = self:add(Node:new("Extranet"))
-    self.extranet:connect(self.startNode)
-    self.extranet.motd = "Welcome to the Extranet, for all your extra-legal needs."
-
-    self.extranetJobs = self:add(Node:new("Extranet Jobs", self.extranet.id .. "-job"))
-    self.extranetJobs:connect(self.extranet)
-    self.extranetJobs.update = function(dt)
-    	self.extranetJobs.motd = "You currently have "..self.credits.." Extranet credits." 
+    local s = self:generateBusinessServers(self.startNode, 3)
+    for i, v in pairs(s) do
+    	self:generateServices(v)
     end
 
-    self.extranetMail = self:add(Node:new("Extranet Mail", self.extranet.id .. "-mail"))
-    self.extranetMail:connect(self.extranet)
+    local employeeName = self:getPersonName()
+    local target = self.startNode.connections[math.random(#self.startNode.connections)]
+    self.currentJob = Job:new("job001.txt", 
+[[
+Hello, if can see this file, it is because we trust you with a 
+sensitive job. One of our technicians has leaked confidential 
+information, and due to legal obligations, we cannot fire him. 
+We need you to delete his employee records.
 
-    self.extranetMarket = self:add(Node:new("Extranet Market", self.extranet.id .. "-market"))
-    self.extranetMarket:connect(self.extranet)
-    self.extranetMarket.update = function(dt)
-    	self.extranetMarket.motd = "You currently have "..self.credits.." Extranet credits." 
-    end
+The employee name is: ]]..employeeName..[[
+
+The server address is: ]]..target.id..[[
+
+We will know when the job has been completed.
+]])
+   	self.startNode:addFile(File:new(self.currentJob.name, self.currentJob.description))
+
+   	local employeeRecords = Node:new(target.name .. " Employee Records", target.id .. ":e8")
+   	target:connect(employeeRecords)
+
+   	local targetFile = File:new(string.lower(employeeName:sub(1, 1) .. employeeName:split(' ')[2] .. ".dat"))
+
+   	self.currentJob.trigger = function()
+   		local found = false
+   		for i, f in pairs(employeeRecords.files) do
+   			if f == targetFile then
+   				found = true
+   			end
+   		end
+
+   		return not found
+   	end
+   	self.currentJob.onCompleted = function()
+		self.currentJob = Job:new("job002.txt",
+[[
+We are pleased with your work so far. We have more work for
+you to do.
+]])
+	   	self.startNode:addFile(File:new(self.currentJob.name, self.currentJob.description))
+   	end
+
+   	for i=1, math.random(10, 20) do
+   		local name = self:getPersonName()
+   		name = name:split(' ')
+
+   		local firstLetter = name[1]:sub(1, 1)
+   		local username = string.lower(firstLetter .. name[2])
+
+   		employeeRecords:addFile(File:new(username .. ".dat", string.random(100)))
+   	end
+
+   	employeeRecords:addFile(targetFile)
+
+	for i=1, math.random(10, 20) do
+   		local name = self:getPersonName()
+   		name = name:split(' ')
+
+   		local firstLetter = name[1]:sub(1, 1)
+   		local username = string.lower(firstLetter .. name[2])
+
+   		employeeRecords:addFile(File:new(username .. ".dat", string.random(100)))
+   	end
 
     self.console = {
     	buffer = {},
@@ -152,6 +226,7 @@ function game:enter()
 		["access"] = "grants access to a server using a password",
 		["back"] = "returns to the previous visited server",
 		["download"] = "saves a file to the root server for later access",
+		["delete"] = "deletes a file in the current server",
 	}
 	self.usage = {
 		["help"] = "help <command>",
@@ -160,7 +235,8 @@ function game:enter()
 		["print"] = "print <filename>",
 		["access"] = "access <server id> <password>",
 		["back"] = "back",
-		["download"] = "download <filename>"
+		["download"] = "download <filename>",
+		["delete"] = "delete <filename>",	
 	}
 	self.commands = {
 		["help"] = function(args)
@@ -213,8 +289,20 @@ function game:enter()
 		end,
 
 		["ls"] = function(args)
+			local filesToPrint = #self.currentNode.files
+			local line = ""
+			local filesInLine = 0
+
 			for i, file in pairs(self.currentNode.files) do
-				self:print(file.name)
+				line = line .. file.name .. "\t"
+				filesToPrint = filesToPrint - 1
+				filesInLine = filesInLine + 1
+
+				if filesInLine >= 3 or filesToPrint == 0 then
+					self:print(line)
+					filesInLine = 0
+					line = ""
+				end
 			end
 
 			if #self.currentNode.files == 0 then
@@ -308,6 +396,29 @@ function game:enter()
 				self:print("error: no file given")
 			end
 		end,
+
+		["delete"] = function(args)
+			if args[1] ~= nil and args[1] ~= "" then
+				local found = false
+				local file = nil
+
+				for i, f in pairs(self.currentNode.files) do
+					if f.name == args[1] then
+						found = true
+						table.remove(self.currentNode.files, i)
+						file = f
+					end
+				end
+
+				if found then
+					self:print("file '"..file.name.."' deleted")
+				else
+					self:print("no file named '"..args[1].."'")
+				end
+			else
+				self:print("error: no file given")
+			end
+		end,
 	}
 end
 
@@ -371,27 +482,22 @@ function game:getBusinessName()
 	return self.businessNames[n]
 end
 
+function game:getPersonName()
+	local n = math.random(#self.personNames)
+	while self.nameUsed[n] do
+		n = math.random(#self.personNames)
+	end
+	self.nameUsed[n] = true
+	return self.personNames[n]
+end
+
 function game:update(dt)
 	for i, obj in pairs(self.objects) do
     	obj:update(dt)
     end
 
-    if math.floor(self.time) % (20) == 0 and not self.jobAdded then
-    	self.jobAdded = true
-    	self.extranetJobs:addFile(File:new('job001.txt', 
-[[
-Hello, if can see this file, it is because we trust you with this 
-sensitive job. One of our technicians has leaked confidential 
-information, and due to legal obligations, we cannot fire him. 
-However, if his employee records were to be suddenly and 
-irreparably corrupted, we would be left with no choice but to 
-terminate his employment.
-
-The server address is: 000
-
-We will know when the job has been completed, and a payment of 
-20 credits will be added to your Extranet account.
-]]))
+    if self.currentJob then
+    	self.currentJob:update(dt)
     end
 
     self.time = self.time + dt
@@ -484,11 +590,14 @@ function game:draw()
 
     love.graphics.setFont(fontBold[16])
     love.graphics.print("connected servers", 840, 50)
-    love.graphics.setFont(font[15])
+    love.graphics.setFont(font[14])
 
+    local widthLimit = 440
+    i = 1
     for i, conn in ipairs(self.currentNode.connections) do
     	local text = conn.id .. " | " .. conn.name
     	local maxWidth, wrappedText = love.graphics.getFont():getWrap(text, widthLimit)
+    	i = i + #wrappedText
     	love.graphics.printf(text, love.graphics.getWidth()-440, 80 + love.graphics.getFont():getHeight(line)*(i-1), widthLimit)
     end
 end
