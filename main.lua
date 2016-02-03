@@ -6,6 +6,7 @@ tween = require 'lib.tween'
 serialize = require 'lib.ser'
 signal = require 'lib.signal'
 hashids = require 'lib.hashids'
+shine = require 'lib.shine'
 require 'lib.util'
 
 -- gamestates

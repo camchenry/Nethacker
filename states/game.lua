@@ -1,5 +1,10 @@
 game = {}
 
+function wait(seconds)
+  local start = os.time()
+  repeat until os.time() > start + seconds
+end
+
 File = class('File')
 
 function File:initialize(name, data, pass)
@@ -116,6 +121,37 @@ function game:generateServices(parent)
 end
 
 function game:enter()
+	local blur = shine.gaussianblur{}
+	local glow = shine.glowsimple{
+		min_luma = 0.5,
+		sigma = 1,
+	}
+	local bloom = shine.bloom{
+		quality = 0.5,
+		samples = 8,
+	}
+	local scanlines = shine.scanlines{
+		pixel_size = 4,
+		line_height = 0.3,
+		opacity = 0.25,
+		center_fade = 0.4,
+	}
+	local crt = shine.crt{
+		x = 0.02,
+		y = 0.005,
+	}
+	local chroma = shine.separate_chroma{
+		radius = 1,
+	}
+	local color = shine.colorgradesimple{
+		grade = {0.95, 1.0, 1.0}
+	}
+	local grain = shine.filmgrain{
+		opacity = 0.15,
+		grainsize = 1,
+	}
+	POST_EFFECT = color:chain(glow):chain(grain):chain(crt):chain(scanlines):chain(chroma)
+
     self.objects = {}
     function game:add(obj) table.insert(self.objects, obj) return obj end
 
@@ -150,18 +186,17 @@ function game:enter()
     local employeeName = self:getPersonName()
     local target = self.startNode.connections[math.random(#self.startNode.connections)]
     self.currentJob = Job:new("job001.txt", 
-[[
-Hello, if can see this file, it is because we trust you with a 
-sensitive job. One of our technicians has leaked confidential 
-information, and due to legal obligations, we cannot fire him. 
-We need you to delete his employee records.
-
-The employee name is: ]]..employeeName..[[
-
-The server address is: ]]..target.id..[[
-
-We will know when the job has been completed.
-]])
+		"Hello, if can see this file, it is because we trust you enough\n" ..
+		"to carry out a sensitive job. One of our technicians has leaked\n" ..
+		"confidential information, and due to legal obligations, we\n" ..
+		"cannot fire him. However, if his employee records were to \n" ..
+		"suddenly be corrupted or erased, we would be under no such \n" ..
+		"obligation. \n" ..
+		"\nThe employee name is: ".. employeeName .. "\n" ..
+		"The server address is: ".. target.id .. "\n" ..
+		"We will know when the job has been completed. If the job\n"..
+		"is successful, we may grant you additional hardware. Good luck."
+	)
    	self.startNode:addFile(File:new(self.currentJob.name, self.currentJob.description))
 
    	local employeeRecords = Node:new(target.name .. " Employee Records", target.id .. ":e8")
@@ -210,17 +245,21 @@ you to do.
    		employeeRecords:addFile(File:new(username .. ".dat", string.random(100)))
    	end
 
+   	self.canType = true
     self.console = {
     	buffer = {},
+    	queue = {},
+    	queueTime = 0,
 		input = "",
 		lastInput = "",
 	}
+
 	self:print("welcome to VIGIL OS 0.3.4")
 	self:print("type 'help' for a list of commands")
 
 	self.help = {
 		["help"] = "gives help info for all commands",
-		["switch"] = "changes the current node to targeted server",
+		["cd"] = "changes the current node to targeted server",
 		["ls"] = "lists files in the current server",
 		["print"] = "outputs the contents of a file",
 		["access"] = "grants access to a server using a password",
@@ -230,7 +269,7 @@ you to do.
 	}
 	self.usage = {
 		["help"] = "help <command>",
-		["switch"] = "switch <server id>",
+		["cd"] = "cd <server id>",
 		["ls"] = "ls",
 		["print"] = "print <filename>",
 		["access"] = "access <server id> <password>",
@@ -255,7 +294,7 @@ you to do.
 			end
 		end,
 
-		["switch"] = function(args)
+		["cd"] = function(args)
 			if args[1] ~= nil then
 				local found = false
 				local node
@@ -273,7 +312,7 @@ you to do.
 					else
 						self.prevNode = self.currentNode
 						self.currentNode = node
-						self:print("switched to server '"..self.currentNode.id.."' (" .. self.currentNode.name ..")")
+						self:print("changed to server '"..self.currentNode.id.."' (" .. self.currentNode.name ..")")
 					
 						if self.currentNode.motd then
 							self:print("\nServer message of the day:")
@@ -324,7 +363,11 @@ you to do.
 
 				if found then
 					self:print("file contents:")
-					self:print(file.data)
+
+					local width, wrappedText = love.graphics.getFont():getWrap(file.data, 700)
+					for i, line in pairs(wrappedText) do
+						self:print(line)
+					end
 				else
 					self:print("no file named '"..args[1].."'")
 				end
@@ -422,8 +465,17 @@ you to do.
 	}
 end
 
-function game:print(string)
-	table.insert(self.console.buffer, 1, string)
+function game:print(string, delay)
+	table.insert(self.console.queue, {string, delay or 0.1})
+end
+
+function game:printRandomText(lines)
+	for i=1, lines do
+		table.insert(self.console.queue, {
+			string.random(60),
+			0.15	
+		})
+	end
 end
 
 function string:split(sSeparator, nMax, bRegexp)
@@ -500,6 +552,20 @@ function game:update(dt)
     	self.currentJob:update(dt)
     end
 
+    self.console.queueTime = self.console.queueTime - dt
+
+    if self.console.queueTime <= 0 then
+	    for i, data in pairs(self.console.queue) do
+	    	local text, time
+	    	text = data[1]
+	    	time = data[2] or 0.1
+	    	self.console.queueTime = time
+	    	table.insert(self.console.buffer, 1, text)
+	    	table.remove(self.console.queue, i)
+	    	break
+	    end
+	end
+
     self.time = self.time + dt
 end
 
@@ -508,7 +574,9 @@ function game:textinput(text)
     	signal.emit('typing')
     end
 
-	self.console.input = self.console.input .. text
+    if self.canType then
+		self.console.input = self.console.input .. text
+	end
 end
 
 function game:wheelmoved(x, y)
@@ -524,21 +592,23 @@ function game:keypressed(key, code)
     	signal.emit('typing')
     end
 
-    if key == "backspace" then
-    	love.keyboard.setKeyRepeat(true)
-    	self.console.input = self.console.input:sub(1, -2)
-    end
+    if self.canType then
+	    if key == "backspace" then
+	    	love.keyboard.setKeyRepeat(true)
+	    	self.console.input = self.console.input:sub(1, -2)
+	    end
 
-    if key == "return" then
-    	self:print("> "..self.console.input)
-    	self:runCommand(self.console.input)
-    	self.console.lastInput = self.console.input
-    	self.console.input = ""
-    end
+	    if key == "return" then
+	    	self:print("> "..self.console.input)
+	    	self:runCommand(self.console.input)
+	    	self.console.lastInput = self.console.input
+	    	self.console.input = ""
+	    end
 
-    if key == "up" then
-    	self.console.input = self.console.lastInput
-    end
+	    if key == "up" then
+	    	self.console.input = self.console.lastInput
+	    end
+   	end
 end
 
 function game:keyreleased(key, code)
@@ -557,6 +627,10 @@ function game:draw()
     for i, obj in pairs(self.objects) do
     	--obj:draw()
     end
+
+    POST_EFFECT(function()
+    love.graphics.setColor(6, 6, 6)
+    love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
 
     love.graphics.setColor(22, 22, 22)
     love.graphics.rectangle("fill", love.graphics.getWidth()-450, 0, 450, love.graphics.getHeight())
@@ -600,4 +674,9 @@ function game:draw()
     	i = i + #wrappedText
     	love.graphics.printf(text, love.graphics.getWidth()-440, 80 + love.graphics.getFont():getHeight(line)*(i-1), widthLimit)
     end
+
+    love.graphics.setLineWidth(5)
+    love.graphics.setColor(77, 77, 77)
+    love.graphics.rectangle("line", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
+    end)
 end
