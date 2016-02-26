@@ -1,102 +1,5 @@
 game = {}
 
-function wait(seconds)
-  local start = os.time()
-  repeat until os.time() > start + seconds
-end
-
-File = class('File')
-
-function File:initialize(name, data, pass)
-	self.name = name
-	self.data = data or string.random(700)
-
-	function replaceChar(pos, str, r)
-	    return ("%s%s%s"):format(str:sub(1,pos-1), r, str:sub(pos+1))
-	end
-
-	if pass then
-		local stringToInsert = "PaSswORD='"..pass.."'"
-		local n = math.random(200, 600)	
-
-		for i=n, n+stringToInsert:len() do
-			self.data = replaceChar(i, self.data, stringToInsert:sub(i-n, i-n))
-		end
-	end
-end
-
-Node = class('Node')
-
-function Node:initialize(name, id)
-	self.name = name or "Node"
-	self.id = id or hashids.new(self.name, 4, "1234567890abcdef"):encode(1235)
-	self.motd = nil
-	self.radius = 25
-	self.connections = {}
-	self.files = {}
-	self.secured = false
-	self.password = nil
-	self.selected = false
-end
-
-function Node:connect(other, stop)
-	local found = false
-	for i, node in pairs(self.connections) do
-		if node == other then
-			found = true
-			break
-		end
-	end
-	if not found then
-		table.insert(self.connections, other)
-	end
-	if not stop then
-		other:connect(self, true)
-	end
-
-	return self
-end
-
-function Node:addFile(file)
-	table.insert(self.files, file)
-end
-
-function Node:addPassword(password)
-	self.password = password
-	self.secured = true
-end
-
-function Node:update(dt)
-
-end
-
-function Node:keypressed(key, code)
-
-end
-
-function Node:mousepressed(x, y, mbutton)
-
-end
-
-Job = class("Job")
-
-function Job:initialize(name, description)
-	self.name = name
-	self.description = description
-	self.completed = false
-	self.alreadyCompleted = false
-	self.trigger = function(self) end
-end
-
-function Job:update(dt)
-	self.completed = self.trigger()
-
-	if self.completed and not self.alreadyCompleted then
-		self.alreadyCompleted = true
-		self.onCompleted()
-	end
-end
-
 function game:generateBusinessServers(start, n)
 	local subnodes = {}
 
@@ -123,8 +26,8 @@ end
 function game:enter()
 	local blur = shine.gaussianblur{}
 	local glow = shine.glowsimple{
-		min_luma = 0.5,
-		sigma = 1,
+		min_luma = 0.4,
+		sigma = 0.4,
 	}
 	local bloom = shine.bloom{
 		quality = 0.5,
@@ -144,7 +47,7 @@ function game:enter()
 		radius = 1,
 	}
 	local color = shine.colorgradesimple{
-		grade = {0.95, 1.0, 1.0}
+		grade = {0.85, 0.85, 1}
 	}
 	local grain = shine.filmgrain{
 		opacity = 0.15,
@@ -245,7 +148,8 @@ you to do.
    		employeeRecords:addFile(File:new(username .. ".dat", string.random(100)))
    	end
 
-   	self.canType = true
+   	self.drawServers = false
+   	self.canType = false
     self.console = {
     	buffer = {},
     	queue = {},
@@ -253,220 +157,56 @@ you to do.
 		input = "",
 		lastInput = "",
 	}
+	self.console.clear = function()
+		self.console.buffer = {}
+	end
+	self.bootTime = 11.5
 
+	signal.emit("boot")
+
+	self:print("", 0.25)
+	self:print("power on", 0.217)
+	self:print("testing memory ")
+	self:append(".", 0.55)
+	self:append(".", 0.55)
+	self:append(".", 0.55)
+	self:print("memory: 65536M OK", 0.75)
+	self:print("initializing boot loader ", 0.45)
+	self:append(".", 0.34)
+	self:append(".", 0.45)
+	self:append(".", 0.23)
+	self:print("VBL v034_gamma loaded", 0.15)
+	self:print("starting services ")
+	self:append(".", 0.64)
+	self:append(".", 0.64)
+	self:append(".", 0.64)
+	self:print("locating devices", 0.35)
+	self:print("drive 1: ok    ATA TC4886460009", 0.8)
+	self:print("drive 2: ok    ATA TC9746460001", 0.5)
+	self:print("drive 3: ok    MSD XA9004345800", 0.5)
+	self:print("loading filesystem ")
+	self:append(".", 0.166)
+	self:append(".", 0.345)
+	self:append(".", 0.78)
+	self:print("loading user files ")
+	self:append(".", 0.25)
+	self:append(".", 0.25)
+	self:append(".", 0.35)
 	self:print("welcome to VIGIL OS 0.3.4")
 	self:print("type 'help' for a list of commands")
 
-	self.help = {
-		["help"] = "gives help info for all commands",
-		["cd"] = "changes the current node to targeted server",
-		["ls"] = "lists files in the current server",
-		["print"] = "outputs the contents of a file",
-		["access"] = "grants access to a server using a password",
-		["back"] = "returns to the previous visited server",
-		["download"] = "saves a file to the root server for later access",
-		["delete"] = "deletes a file in the current server",
-	}
-	self.usage = {
-		["help"] = "help <command>",
-		["cd"] = "cd <server id>",
-		["ls"] = "ls",
-		["print"] = "print <filename>",
-		["access"] = "access <server id> <password>",
-		["back"] = "back",
-		["download"] = "download <filename>",
-		["delete"] = "delete <filename>",	
-	}
-	self.commands = {
-		["help"] = function(args)
-			if args[1] == nil then
-				self:print("usage: "..self.usage["help"])
-				self:print("commands:")
-				for command, f in pairs(self.commands) do
-					self:print(command .. " - "..self.help[command])
-				end
-			else
-				if self.usage[args[1]] then
-					self:print("usage: "..self.usage[args[1]])
-				else
-					self:print("no usage docs found for '"..args[1].."'")
-				end
-			end
-		end,
-
-		["cd"] = function(args)
-			if args[1] ~= nil then
-				local found = false
-				local node
-
-				for i, _node in pairs(self.currentNode.connections) do
-					if _node.id == args[1] then
-						found = true
-						node = _node
-					end
-				end
-
-				if found then
-					if node.secured then
-						self:print("access denied. password required")
-					else
-						self.prevNode = self.currentNode
-						self.currentNode = node
-						self:print("changed to server '"..self.currentNode.id.."' (" .. self.currentNode.name ..")")
-					
-						if self.currentNode.motd then
-							self:print("\nServer message of the day:")
-							self:print(self.currentNode.motd)
-						end
-					end
-				else
-					self:print("no server '"..args[1].."' found")
-				end
-			else
-				self:print("error: no server unique id given")
-			end
-		end,
-
-		["ls"] = function(args)
-			local filesToPrint = #self.currentNode.files
-			local line = ""
-			local filesInLine = 0
-
-			for i, file in pairs(self.currentNode.files) do
-				line = line .. file.name .. "\t"
-				filesToPrint = filesToPrint - 1
-				filesInLine = filesInLine + 1
-
-				if filesInLine >= 3 or filesToPrint == 0 then
-					self:print(line)
-					filesInLine = 0
-					line = ""
-				end
-			end
-
-			if #self.currentNode.files == 0 then
-				self:print("no files in current server.")
-			end
-		end,
-
-		["print"] = function(args)
-			if args[1] ~= nil and args[1] ~= "" then
-				local found = false
-				local file = nil
-
-				for i, f in pairs(self.currentNode.files) do
-					if f.name == args[1] then
-						found = true
-					end
-					file = f
-				end
-
-				if found then
-					self:print("file contents:")
-
-					local width, wrappedText = love.graphics.getFont():getWrap(file.data, 700)
-					for i, line in pairs(wrappedText) do
-						self:print(line)
-					end
-				else
-					self:print("no file named '"..args[1].."'")
-				end
-			else
-				self:print("error: no filename given")
-			end
-		end,
-
-		["access"] = function(args)
-			if args[1] ~= nil and args[1] ~= "" then
-				local found = false
-				local node
-
-				for i, _node in pairs(self.currentNode.connections) do
-					if _node.id == args[1] then
-						found = true
-						node = _node
-					end
-				end
-
-				if found then
-					if not node.secured then
-						self:print("error: server is not password secured")
-						return
-					end
-
-					if args[2] ~= nil and args[2] ~= "" then
-						if args[2] == node.password then
-							node.secured = false
-							self:print("server '"..args[1].."' unlocked")
-						else
-							self:print("error: invalid password")
-						end
-					else
-						self:print("error: no password given")
-					end
-				else
-					self:print("no server '"..args[1].."' found")
-				end
-			else
-				self:print("error: no server unique id given")
-			end
-		end,
-
-		["back"] = function(args)
-			self.currentNode = self.prevNode
-			self:print("returned to previous node '"..self.currentNode.id.."' ("..self.currentNode.name..")")
-		end,
-
-		["download"] = function(args)
-			if args[1] ~= nil and args[1] ~= "" then
-				local found = false
-				local file = nil
-
-				for i, f in pairs(self.currentNode.files) do
-					if f.name == args[1] then
-						found = true
-					end
-					file = f
-				end
-
-				if found then
-					table.insert(self.startNode.files, file)
-					self:print("file '"..file.name.."' downloaded to root server")
-				else
-					self:print("no file named '"..args[1].."'")
-				end
-			else
-				self:print("error: no file given")
-			end
-		end,
-
-		["delete"] = function(args)
-			if args[1] ~= nil and args[1] ~= "" then
-				local found = false
-				local file = nil
-
-				for i, f in pairs(self.currentNode.files) do
-					if f.name == args[1] then
-						found = true
-						table.remove(self.currentNode.files, i)
-						file = f
-					end
-				end
-
-				if found then
-					self:print("file '"..file.name.."' deleted")
-				else
-					self:print("no file named '"..args[1].."'")
-				end
-			else
-				self:print("error: no file given")
-			end
-		end,
-	}
+	local commands = require 'entities.object.commands'
+	self.help = commands.help
+	self.usage = commands.usage
+	self.commands = commands.list
 end
 
-function game:print(string, delay)
-	table.insert(self.console.queue, {string, delay or 0.1})
+function game:print(string, delay, mode)
+	table.insert(self.console.queue, {string, delay or 0.1, mode or "write"})
+end
+
+function game:append(string, delay)
+	self:print(string, delay, "append")
 end
 
 function game:printRandomText(lines)
@@ -559,14 +299,28 @@ function game:update(dt)
 	    	local text, time
 	    	text = data[1]
 	    	time = data[2] or 0.1
+	    	mode = data[3] or "write"
 	    	self.console.queueTime = time
-	    	table.insert(self.console.buffer, 1, text)
-	    	table.remove(self.console.queue, i)
+
+	    	if mode == "write" then
+		    	table.insert(self.console.buffer, 1, text)
+		    elseif mode == "append" then
+		    	self.console.buffer[1] = self.console.buffer[1] .. text
+			end
+
+			table.remove(self.console.queue, i)
 	    	break
 	    end
 	end
 
     self.time = self.time + dt
+
+    if self.time - self.startTime > self.bootTime then
+    	self.canType = true
+    	self.drawServers = true
+    	soundManager:fadeSound("serverAmbience", 0.4, 4)
+
+    end
 end
 
 function game:textinput(text)
@@ -588,11 +342,11 @@ function game:keypressed(key, code)
     	obj:keypressed(key, code)
     end
 
-    if not love.keyboard.hasKeyRepeat() then
-    	signal.emit('typing')
-    end
-
     if self.canType then
+    	if not love.keyboard.hasKeyRepeat() then
+	    	signal.emit('typing')
+	    end
+
 	    if key == "backspace" then
 	    	love.keyboard.setKeyRepeat(true)
 	    	self.console.input = self.console.input:sub(1, -2)
@@ -632,9 +386,11 @@ function game:draw()
     love.graphics.setColor(6, 6, 6)
     love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
 
-    love.graphics.setColor(22, 22, 22)
-    love.graphics.rectangle("fill", love.graphics.getWidth()-450, 0, 450, love.graphics.getHeight())
-    love.graphics.setColor(255, 255, 255)
+    if self.drawServers then
+	    love.graphics.setColor(22, 22, 22)
+	    love.graphics.rectangle("fill", love.graphics.getWidth()-450, 0, 450, love.graphics.getHeight())
+	    love.graphics.setColor(255, 255, 255)
+	end
 
     love.graphics.setColor(33, 33, 33)
     love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), 40)
@@ -644,12 +400,14 @@ function game:draw()
     local date = os.date("%c", self.time)
     love.graphics.print(date, love.graphics.getWidth()-love.graphics.getFont():getWidth(date) - 20, 10)
     love.graphics.print("F"..love.timer.getFPS(), 20, 10)
-    love.graphics.print("AD"..love.timer.getAverageDelta(), 80, 10)
+    love.graphics.print("D"..love.timer.getAverageDelta(), 80, 10)
 
-    love.graphics.setFont(fontBold[16])
-    love.graphics.print(self.currentNode.name .. " (" .. self.currentNode.id .. ")", 15, love.graphics.getHeight()-60)
-    love.graphics.setFont(font[16])
-    love.graphics.print("> "..self.console.input, 15, love.graphics.getHeight()-40)
+    if self.canType then
+	    love.graphics.setFont(fontBold[16])
+	    love.graphics.print(self.currentNode.name .. " (" .. self.currentNode.id .. ")", 15, love.graphics.getHeight()-60)
+	    love.graphics.setFont(font[16])
+	    love.graphics.print("> "..self.console.input, 15, love.graphics.getHeight()-40)
+	end
 
     local widthLimit = 700
     local heightLimit = (love.graphics.getHeight() - 120)/love.graphics.getFont():getHeight("ABCDEFGHJIJKLMNOPQRSTUVWXYZ")
@@ -662,18 +420,21 @@ function game:draw()
     	if i >= heightLimit then break end
     end
 
-    love.graphics.setFont(fontBold[16])
-    love.graphics.print("connected servers", 840, 50)
-    love.graphics.setFont(font[14])
+    if self.drawServers then
+	    local widthLimit = 440
+	    love.graphics.setFont(fontBold[16])
+	    love.graphics.print("connected servers", love.graphics.getWidth()-widthLimit, 50)
+	    love.graphics.setFont(font[14])
 
-    local widthLimit = 440
-    i = 1
-    for i, conn in ipairs(self.currentNode.connections) do
-    	local text = conn.id .. " | " .. conn.name
-    	local maxWidth, wrappedText = love.graphics.getFont():getWrap(text, widthLimit)
-    	i = i + #wrappedText
-    	love.graphics.printf(text, love.graphics.getWidth()-440, 80 + love.graphics.getFont():getHeight(line)*(i-1), widthLimit)
-    end
+    
+	    i = 1
+	    for i, conn in ipairs(self.currentNode.connections) do
+	    	local text = conn.id .. " | " .. conn.name
+	    	local maxWidth, wrappedText = love.graphics.getFont():getWrap(text, widthLimit)
+	    	i = i + #wrappedText
+	    	love.graphics.printf(text, love.graphics.getWidth()-440, 80 + love.graphics.getFont():getHeight(line)*(i-1), widthLimit)
+	    end
+	end
 
     love.graphics.setLineWidth(5)
     love.graphics.setColor(77, 77, 77)

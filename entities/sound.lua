@@ -19,6 +19,7 @@ function Sound:initialize(directory)
 	end
 
 	self.soundVolume = config.audio.soundVolume/100
+
 	self.sounds = {}
 	local files = love.filesystem.getDirectoryItems(self.directory)
 	for i, file in pairs(files) do
@@ -26,18 +27,28 @@ function Sound:initialize(directory)
 		if love.filesystem.isFile(path) then
 			local name = removeFileExtension(getFileName(path))
 			self.sounds[name] = love.audio.newSource(path)
-			self.sounds[name]:setVolume(self.soundVolume)
 		end
 	end
+
+	self.volumes = {}
+	for name, sound in pairs(self.sounds) do
+		self.volumes[name] = self.soundVolume
+		self.sounds[name]:setVolume(self.soundVolume)
+	end
+
+	self.volumes.serverAmbience = 0.5
 
     signal.register('uiClick', function() self:onUiClick() end)
     signal.register('uiHover', function() self:onUiHover() end)
     signal.register('soundVolumeChanged', function(v) self:onSoundVolumeChanged(v) end)
     signal.register('typing', function() self:onTyping() end)
+    signal.register('boot', function() self:onBoot() end)
 end
 
 function Sound:update(dt)
-	
+	for name, sound in pairs(self.sounds) do
+		sound:setVolume(self.volumes[name])
+	end
 end
 
 function Sound:onSoundVolumeChanged(volume)
@@ -64,6 +75,15 @@ end
 function Sound:onTyping()
 	local file = "typing"..math.random(6)
 	self.sounds[file]:play()
+end
+
+function Sound:onBoot()
+	--self.sounds.driveSpinUp:play()
+	self.sounds.serverAmbience:play()
+end
+
+function Sound:fadeSound(sound, level, time)
+	tween(time, self.volumes, {[sound] = level})
 end
 
 function Sound:draw()

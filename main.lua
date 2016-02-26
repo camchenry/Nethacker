@@ -17,6 +17,10 @@ require 'states.options'
 -- entities
 require 'entities.sound'
 
+require 'entities.object.node'
+require 'entities.object.file'
+require 'entities.object.job'
+
 -- ui
 require 'lib.ui.button'
 require 'lib.ui.checkbox'
@@ -65,6 +69,7 @@ end
 
 function love.update(dt)
     tween.update(dt)
+    soundManager:update(dt)
 end
 
 function love.draw()
