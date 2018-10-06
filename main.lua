@@ -28,6 +28,26 @@ require 'lib.ui.input'
 require 'lib.ui.list'
 require 'lib.ui.slider'
 
+-- compatibility layer
+local _setColor = love.graphics.setColor
+love.graphics.setColor = function(r, g, b, a)
+    if type(r) == "table" then
+        r, g, b, a = unpack(r)
+    end
+
+    if a == nil then
+        a = 255
+    end
+
+    _setColor(r/255, g/255, b/255, a/255)
+end
+
+local _getColor = love.graphics.getColor
+love.graphics.getColor = function()
+    local r, g, b, a = _getColor()
+    return r*255, g*255, b*255, a*255
+end
+
 function love.load()
 	love.window.setTitle(config.windowTitle)
     love.window.setIcon(love.image.newImageData(config.windowIcon))

@@ -26,7 +26,7 @@ function Sound:initialize(directory)
 		local path = self.directory .. file
 		if love.filesystem.isFile(path) then
 			local name = removeFileExtension(getFileName(path))
-			self.sounds[name] = love.audio.newSource(path)
+			self.sounds[name] = love.audio.newSource(path, 'static')
 		end
 	end
 
